@@ -1,6 +1,7 @@
 ﻿using NostalgiaOrbitDLL;
 using NostalgiaOrbitDLL.Core;
 using NostalgiaOrbitDLL.Core.Responses;
+using NostalgiaOrbitDLL.Resources;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -11,7 +12,18 @@ public abstract class AbstractMapObject
 {
     public virtual Guid Id { get; set; }
     public bool IsPlayer { get; set; }
-    public string SocketId { get => Server.PilotSessions.First(o => o.PilotId == Id).ChannelSocketId[ServerChannels.Game]; }
+    public string SocketId
+    {
+        get
+        {
+            var pilot = Server.PilotSessions.FirstOrDefault(o => o.PilotId == Id);
+
+            if (pilot != null && pilot.ChannelSocketId.ContainsKey(ServerChannels.Game))
+                return pilot.ChannelSocketId[ServerChannels.Game];
+
+            return null;
+        }
+    }
 
 
 
@@ -100,7 +112,6 @@ public abstract class AbstractMapObject
                 return;
 
             hitpoints = value;
-            //OnLifeUpdate();
         }
     }
 
@@ -122,7 +133,6 @@ public abstract class AbstractMapObject
                 return;
 
             shields = value;
-            //OnLifeUpdate();
         }
     }
 
@@ -164,7 +174,7 @@ public abstract class AbstractMapObject
 
     private int isUnderAttack;
     /// <summary>
-    /// When ! -> can Repair / Change map on pvp map
+    /// When == 0 -> can Repair / Change map on pvp map
     /// </summary>
     public int IsUnderAttack
     {
@@ -282,6 +292,7 @@ public abstract class AbstractMapObject
     }
 
     protected abstract bool CanAttackRocket { get; }
+    protected abstract bool AutoAttackRocket { get; }
     protected bool attackRocket { get; set; }
     public bool AttackRocket
     {
@@ -301,9 +312,9 @@ public abstract class AbstractMapObject
         if (!AreaObjects.Any() && !withLocalplayer)
             return;
 
-        var destroyMapObjectResponse = new AttackResponse(Id, TargetMapObject?.Id, resource);
+        var attackResponse = new AttackResponse(Id, TargetMapObject?.Id, resource);
 
-        SynchronizeWithPlayers(destroyMapObjectResponse, withLocalplayer);
+        SynchronizeWithPlayers(attackResponse, withLocalplayer);
     }
 
     public List<AbstractMapObject> attackers { get; } = new List<AbstractMapObject>();
@@ -389,16 +400,18 @@ public abstract class AbstractMapObject
         if (rocketDelay > 0)
             rocketDelay--;
 
-        if ((AttackAmmunition || AttackRocket) && Extensions.Distance(this, TargetMapObject) <= ShotRange)
+        if ((AttackAmmunition || AttackRocket || AutoAttackRocket) && TargetMapObject != null && Extensions.Distance(this, TargetMapObject) <= ShotRange)
         {
             if (TargetMapObject.IsSafe)
             {
                 attackRocket = false;
                 AttackAmmunition = false;
             }
-
-            UseAmmunition();
-            UseRocket();
+            else
+            {
+                UseAmmunition();
+                UseRocket();
+            }
         }
         else
         {
@@ -439,6 +452,7 @@ public abstract class AbstractMapObject
         {
             if (CanAttackAmmunition)
             {
+                IsSafe = false;
                 shotDelay = Server.ShotDelay;
                 DealDamage(LaserDamage, AmmunitionResource);
             }
@@ -448,19 +462,23 @@ public abstract class AbstractMapObject
     private int rocketDelay;
     private void UseRocket()
     {
-        if (AttackRocket && rocketDelay == 0)
+        if ((AttackRocket || AutoAttackRocket) && rocketDelay == 0)
         {
             if (CanAttackRocket)
             {
+                IsSafe = false;
                 rocketDelay = RocketCountdown;
                 DealDamage(RocketDamage, RocketResource.Value);
+
+                if (!AutoAttackRocket)
+                    attackRocket = false;
             }
         }
     }
 
     private void DealDamage(long damage, ResourceTypes resourceType)
     {
-        TargetMapObject.ReceiveDamage(this, damage);
+        TargetMapObject.ReceiveDamage(this, damage, resourceType);
 
         OnAttackResponse(resourceType, true);
 
@@ -470,58 +488,102 @@ public abstract class AbstractMapObject
         }
     }
 
-    private void ReceiveDamage(AbstractMapObject abstractMapObject, long damage)
+    private void ReceiveDamage(AbstractMapObject abstractMapObject, long damage, ResourceTypes resourceType)
     {
         OnAddAttacker(abstractMapObject);
 
         IsUnderAttack = Server.UnderAttackDelay;
 
-        TakeDamage(damage);
+        TakeDamage(abstractMapObject, damage, resourceType);
     }
 
-    private void TakeDamage(long damage)
+    private void TakeDamage(AbstractMapObject abstractMapObject, long damage, ResourceTypes resourceType)
     {
         long dmgHp = 0;
 
         long hitpoints = Hitpoints;
         long shields = Shields;
 
-        if (shields > 0 && ShieldAbsorption > 0)
+        if (DLLHelpers.IsAmmunitionType(resourceType) && AbstractResource.GetResourceByType(resourceType).ShotInOnlyShield)
         {
-            long dmgShd = Convert.ToInt64(damage * ShieldAbsorption);
-            if (shields - dmgShd >= 0)
+            long repairShd = 0;
+
+            if (shields > 0 && ShieldAbsorption > 0)
+            {
+                if (shields - damage >= 0)
+                {
+                    //if (IsPlayer)
+                    //    (this as PilotServer).AddAchievement(o => o.ShieldDestroy, dmgShd);
+
+                    repairShd = damage;
+                    shields -= damage;
+                }
+                else
+                {
+                    //if (IsPlayer)
+                    //    (this as PilotServer).AddAchievement(o => o.ShieldDestroy, Shields);
+
+                    repairShd = damage - shields;
+                    shields = 0;
+                }
+            }
+
+            if (repairShd > 0 && abstractMapObject.Shields < abstractMapObject.MaxShields)
+            {
+                long objectShd = abstractMapObject.Shields + repairShd;
+                long repair = 0;
+                if (objectShd >= abstractMapObject.MaxShields)
+                {
+                    repair = objectShd;
+                }
+                else
+                {
+                    repair = abstractMapObject.MaxShields - abstractMapObject.Shields;
+                }
+
+                if (repair > 0)
+                    abstractMapObject.OnLifeUpdate(abstractMapObject.Hitpoints, repair);
+            }
+        }
+        else
+        {
+            if (shields > 0 && ShieldAbsorption > 0)
+            {
+                long dmgShd = Convert.ToInt64(damage * ShieldAbsorption);
+                if (shields - dmgShd >= 0)
+                {
+                    //if (IsPlayer)
+                    //    (this as PilotServer).AddAchievement(o => o.ShieldDestroy, dmgShd);
+
+                    dmgHp = damage - dmgShd;
+                    shields -= dmgShd;
+                }
+                else
+                {
+                    //if (IsPlayer)
+                    //    (this as PilotServer).AddAchievement(o => o.ShieldDestroy, Shields);
+
+                    dmgHp = damage - shields;
+                    shields = 0;
+                }
+            }
+            else
+                dmgHp = damage;
+
+            if (hitpoints - dmgHp >= 0)
             {
                 //if (IsPlayer)
-                //    (this as PilotServer).AddAchievement(o => o.ShieldDestroy, dmgShd);
+                //    (this as PilotServer).AddAchievement(o => o.HitpointDestroy, dmgHp);
 
-                dmgHp = damage - dmgShd;
-                shields -= dmgShd;
+                hitpoints -= dmgHp;
             }
             else
             {
                 //if (IsPlayer)
-                //    (this as PilotServer).AddAchievement(o => o.ShieldDestroy, Shields);
+                //    (this as PilotServer).AddAchievement(o => o.HitpointDestroy, Hitpoints);
 
-                dmgHp = damage - shields;
-                shields = 0;
+                hitpoints = 0;
             }
-        }
-        else
-            dmgHp = damage;
-
-        if (hitpoints - dmgHp >= 0)
-        {
-            //if (IsPlayer)
-            //    (this as PilotServer).AddAchievement(o => o.HitpointDestroy, dmgHp);
-
-            hitpoints -= dmgHp;
-        }
-        else
-        {
-            //if (IsPlayer)
-            //    (this as PilotServer).AddAchievement(o => o.HitpointDestroy, Hitpoints);
-
-            hitpoints = 0;
         }
 
         OnLifeUpdate(hitpoints, shields);
@@ -608,29 +670,43 @@ public abstract class AbstractMapObject
         get => isWantLogout;
         set
         {
+            if (isWantLogout == value)
+                return;
+
             isWantLogout = value;
+            logoutTimer = 0;
 
-            if (!isWantLogout)
+            if (IsPlayer)
             {
-                foreach (var weakMapObject in AreaObjects)
-                {
-                    var mapObject = weakMapObject.GetValue();
+                var logoutResponse = new LogoutResponse(IsWantLogout, RequireLogoutTime, LogoutTimer);
 
-                    if (mapObject == null)
-                        continue;
-
-                    var spawnMapObjectResponse = new SpawnMapObjectResponse(mapObject.GetMapObject());
-
-                    SynchronizeLocalPlayer(spawnMapObjectResponse);
-                }
+                SynchronizeLocalPlayer(logoutResponse);
             }
         }
     }
-    public int RequireLogoutTime { get; set; }
-    public int LogoutTimer { get; set; }
+    public virtual int RequireLogoutTime { get; }
+    protected int logoutTimer;
+    public int LogoutTimer
+    {
+        get => logoutTimer;
+        set
+        {
+            if (logoutTimer == value)
+                return;
+
+            logoutTimer = value;
+
+            if (IsPlayer && IsWantLogout)
+            {
+                var logoutResponse = new LogoutResponse(IsWantLogout, RequireLogoutTime, value);
+
+                SynchronizeLocalPlayer(logoutResponse);
+            }
+        }
+    }
     #endregion
 
-    protected abstract MapObject GetMapObject();
+    public abstract MapObject GetMapObject();
     public void AddMapObjectToSynchronize(AbstractMapObject mapObject, bool relation = true)
     {
         if (!IsPlayer && !mapObject.IsPlayer)
@@ -678,7 +754,7 @@ public abstract class AbstractMapObject
         {
             var player = weakPlayer.GetValue();
 
-            if (player == null || !player.IsPlayer || player.IsWantLogout)
+            if (player == null || !player.IsPlayer)
                 continue;
 
             var pilot = Server.PilotsInGame[player.Id];
@@ -691,16 +767,16 @@ public abstract class AbstractMapObject
         if (withLocalPlayer)
             SynchronizeLocalPlayer(data);
     }
-    protected void SynchronizeLocalPlayer(AbstractResponse abstractResponse)
+    public void SynchronizeLocalPlayer(AbstractResponse abstractResponse)
     {
-        if (IsPlayer && !IsWantLogout)
+        if (IsPlayer)
         {
             SynchronizeLocalPlayer(DLLHelpers.Serialize(abstractResponse));
         }
     }
     protected void SynchronizeLocalPlayer(byte[] data)
     {
-        if (IsPlayer && !IsWantLogout)
+        if (IsPlayer)
         {
             AbstractService.SendToSocket(GameService.ChannelName, SocketId, data);
         }

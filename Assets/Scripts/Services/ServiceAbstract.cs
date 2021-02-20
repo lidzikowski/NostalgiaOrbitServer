@@ -165,6 +165,11 @@ public class AbstractService : WebSocketBehavior
     }
     public static void SendToSocket(string channel, string socketId, AbstractResponse abstractResponse, AbstractCommand command = null)
     {
+        if (string.IsNullOrEmpty(socketId))
+        {
+            return;
+        }
+
         if (command != null)
             abstractResponse.SetResponseId(command);
 

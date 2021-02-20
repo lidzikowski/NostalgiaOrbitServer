@@ -132,7 +132,7 @@ public abstract class AbstractEnvironmentObject
 
 
 
-    protected EnvironmentObject GetEnvironmentObject()
+    public EnvironmentObject GetEnvironmentObject()
     {
         return new EnvironmentObject(Id, AbstractEnvironment, PositionObj, PrefabType, OwnerId);
     }
@@ -170,7 +170,7 @@ public abstract class AbstractEnvironmentObject
         {
             var player = weakPlayer.GetValue();
 
-            if (player == null || player.IsWantLogout)
+            if (player == null)
                 continue;
 
             var pilot = Server.PilotsInGame[player.Id];
@@ -180,9 +180,8 @@ public abstract class AbstractEnvironmentObject
                 AbstractService.SendToSocket(GameService.ChannelName, pilotSession.ChannelSocketId[ServerChannels.Game], data);
         }
     }
-    protected void SynchronizePlayer(AbstractMapObject abstractMapObject, AbstractResponse abstractResponse)
+    public void SynchronizePlayer(AbstractMapObject abstractMapObject, AbstractResponse abstractResponse)
     {
-        if (!abstractMapObject.IsWantLogout)
-            AbstractService.SendToSocket(GameService.ChannelName, abstractMapObject.SocketId, abstractResponse);
+        AbstractService.SendToSocket(GameService.ChannelName, abstractMapObject.SocketId, abstractResponse);
     }
 }

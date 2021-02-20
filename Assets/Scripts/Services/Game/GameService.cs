@@ -44,8 +44,8 @@ public class GameService : AbstractService
                 }
                 else
                 {
-                    Server.PilotsInGame[pilotId].IsWantLogout = false;
-                    Server.PilotsInGame[pilotId].LogoutTimer = 0;
+                    StandardMapObject.Logout(pilotId, true);
+                    StandardMapObject.Reconnect(pilotId);
                 }
 
                 SendToSocket(new JoinToMapResponse(Server.PilotsInGame[pilotId].Pilot));
@@ -67,15 +67,7 @@ public class GameService : AbstractService
 
             if (pilotSession != null)
             {
-                if (Server.PilotsInGame.ContainsKey(pilotSession.PilotId))
-                {
-                    var pilotMapObject1 = Server.PilotsInGame[pilotSession.PilotId];
-
-                    pilotMapObject1.IsWantLogout = true;
-                    pilotMapObject1.LogoutTimer = 0;
-
-                    Debug.Log($"OnClose : {pilotMapObject1.Id} want logout.");
-                }
+                StandardMapObject.Logout(pilotSession.PilotId);
             }
 
             base.OnClose(e);
@@ -91,7 +83,7 @@ public class GameService : AbstractService
 
         Debug.Log($"{Channel} -> OnMessage: {command.GetType().Name}");
 
-        //ExecuteCommand<LogoutCommand>(command, OnLogoutCommand);
+        ExecuteCommand<LogoutCommand>(command, OnLogoutCommand);
         ExecuteCommand<PilotDataCommand>(command, OnPilotDataCommand);
         ExecuteCommand<ChangePositionCommand>(command, OnChangePositionCommand);
         ExecuteCommand<ChooseResourceCommand>(command, OnChooseResourceCommand);
@@ -100,6 +92,16 @@ public class GameService : AbstractService
         ExecuteCommand<CollectEnvironmentCommand>(command, OnCollectEnvironmentCommand);
 
         //base.OnMessage(e);
+    }
+
+    private void OnLogoutCommand(LogoutCommand command, Guid pilotId)
+    {
+        if (command.LogoutType == LogoutTypes.FromMap)
+        {
+            StandardMapObject.Logout(pilotId, command.Cancel);
+        }
+        else
+            throw new NotImplementedException($"{command.LogoutType}");
     }
 
     private void OnCollectEnvironmentCommand(CollectEnvironmentCommand command, Guid pilotId)

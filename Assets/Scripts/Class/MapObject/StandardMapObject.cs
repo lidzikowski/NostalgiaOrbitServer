@@ -1,4 +1,5 @@
 ﻿using NostalgiaOrbitDLL;
+using NostalgiaOrbitDLL.Core.Responses;
 using NostalgiaOrbitDLL.Enemies;
 using System;
 using System.Linq;
@@ -15,6 +16,7 @@ public class StandardMapObject : AbstractMapObject
     public override string ObjectName => AbstractEnemy.GetEnemyName(AbstractEnemy.EnemyType);
     public override Reward RewardForDead => AbstractEnemy.GetEnemyByType(AbstractEnemy.EnemyType).Reward;
     protected override float ShotRange => AbstractEnemy.GetEnemyByType(AbstractEnemy.EnemyType).ShotRange / 15;
+    protected override bool AutoAttackRocket => true;
 
 
 
@@ -46,7 +48,7 @@ public class StandardMapObject : AbstractMapObject
 
     protected override float shieldsAbsorption => AbstractEnemy.ShieldAbsorption;
 
-    protected override MapObject GetMapObject()
+    public override MapObject GetMapObject()
     {
         return CreateMapObject();
     }
@@ -148,5 +150,51 @@ public class StandardMapObject : AbstractMapObject
     public override void UpdateEvery10Second(MapWorker mapWorker)
     {
         base.UpdateEvery10Second(mapWorker);
+    }
+
+    public static void Logout(Guid pilotId, bool cancel = false)
+    {
+        if (Server.PilotsInGame.ContainsKey(pilotId))
+        {
+            var pilotMapObject = Server.PilotsInGame[pilotId];
+
+            if (cancel || pilotMapObject.IsUnderAttack > 0)
+            {
+                pilotMapObject.IsWantLogout = false;
+            }
+            else
+            {
+                pilotMapObject.IsWantLogout = true;
+            }
+        }
+    }
+
+    public static void Reconnect(Guid pilotId)
+    {
+        if (Server.PilotsInGame.ContainsKey(pilotId))
+        {
+            var pilotMapObject = Server.PilotsInGame[pilotId];
+
+            foreach (var item in pilotMapObject.AreaObjects)
+            {
+                if (item.TryGetTarget(out var mapObject))
+                {
+                    var spawnMapObjectResponse = new SpawnMapObjectResponse(mapObject.GetMapObject());
+
+                    pilotMapObject.SynchronizeLocalPlayer(spawnMapObjectResponse);
+                }
+            }
+
+            // TODO - bugs
+            //var environments = Server.MapInstances[pilotMapObject.Pilot.Map].EnvironmentObjects.Where(e => e.AreaPlayers.Any(p => p.GetValue().Id == pilotMapObject.Id));
+
+            //foreach (var environment in environments)
+            //{
+            //    var spawnEnvironmentObjectResponse = new SpawnEnvironmentObjectResponse(environment.GetEnvironmentObject(), environment.AbstractEnvironment.PrefabType);
+
+            //    environment.SynchronizePlayer(pilotMapObject, spawnEnvironmentObjectResponse);
+            //}
+        }
+
     }
 }

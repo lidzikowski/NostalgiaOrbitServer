@@ -1,5 +1,6 @@
 ﻿using NostalgiaOrbitDLL;
 using NostalgiaOrbitDLL.Core;
+using NostalgiaOrbitDLL.Core.Commands;
 using NostalgiaOrbitDLL.Core.Database_objects;
 using NostalgiaOrbitDLL.Maps;
 using System;
@@ -123,6 +124,12 @@ public class Server : MonoBehaviour
     {
         SavePilotData(pilotMapObject.Pilot);
         PilotsInGame.Remove(pilotMapObject.Id);
+
+        var session = PilotSessions.FirstOrDefault(o => o.ChannelSocketId.ContainsKey(ServerChannels.Game));
+        if (session != null)
+        {
+            AbstractService.Disconnected(GameService.ChannelName, session.ChannelSocketId[ServerChannels.Game], WebSocketSharp.CloseStatusCode.Normal, nameof(LogoutCommand));
+        }
     }
 
     public static void SavePilotData(Pilot pilot)

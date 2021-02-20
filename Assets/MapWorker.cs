@@ -57,7 +57,7 @@ public class MapWorker : MonoBehaviour
     {
         bool find = false;
 
-        if (!AbstractMap.IsPvp && mapObject is PilotMapObject pilotMapObject && DLLHelpers.IsCompanyMap(pilotMapObject.Pilot.FirmType, AbstractMap.MapType))
+        if (mapObject.IsUnderAttack == 0 && !mapObject.AttackAmmunition && !mapObject.AttackRocket && !AbstractMap.IsPvp && mapObject is PilotMapObject pilotMapObject && DLLHelpers.IsCompanyMap(pilotMapObject.Pilot.FirmType, AbstractMap.MapType))
         {
             foreach (var portal in AbstractMap.Portals)
             {

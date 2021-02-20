@@ -24,6 +24,8 @@ public class PilotMapObject : AbstractMapObject
     public override string ObjectName => Pilot.PilotName;
     public override Reward RewardForDead => Pilot.Ship.Reward;
     protected override float ShotRange => Pilot.LaserShotRange / 15;
+    public override int RequireLogoutTime => IsSafe ? 3 : 20;
+    protected override bool AutoAttackRocket => false; // TODO extras
 
 
 
@@ -32,7 +34,6 @@ public class PilotMapObject : AbstractMapObject
         Pilot = pilot;
 
         IsPlayer = true;
-        RequireLogoutTime = 10;
 
         if (pilot.AccountType == AccountTypes.Administrator && pilot.ShipType != PrefabTypes.Admin)
         {
@@ -90,7 +91,7 @@ public class PilotMapObject : AbstractMapObject
         get => Pilot.Equipment_ShieldsAbsorption;
     }
 
-    protected override MapObject GetMapObject()
+    public override MapObject GetMapObject()
     {
         return new MapObject(Pilot, TargetPosition.ToPositionVector());
     }
