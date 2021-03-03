@@ -40,7 +40,7 @@ public class MainService : AbstractService
     {
         var accounts = await Server.Database.PilotsInDatabase();
 
-        SendToSocket(new OnlinePlayersResponse(Server.PilotSessions.Count(), accounts), command);
+        SendToSocket(new OnlinePlayersResponse(Server.PilotsInGame.Count(), accounts), command);
     }
 
     private async void OnRegisterCommand(RegisterCommand command, Guid pilotId)

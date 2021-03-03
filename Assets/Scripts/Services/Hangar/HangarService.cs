@@ -54,14 +54,10 @@ public class HangarService : AbstractService
 
     private void OnLogoutCommand(LogoutCommand command, Guid pilotId)
     {
-        switch (command.LogoutType)
+        if (command.LogoutType == LogoutTypes.FromHome)
         {
-            case LogoutTypes.FromHome:
-                ClearSession();
-                break;
-            case LogoutTypes.FromMap:
-                //ClearSession(false);
-                break;
+            ClearSession();
+            Disconnected(ChannelString, ID, CloseStatusCode.Normal, "LogoutCommand");
         }
     }
 
